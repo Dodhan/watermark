@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f6f9">
-  <meta name="description" content="그림과 사진에 나만의 이름을. 문구를 가로로 반복하고 크기, 간격, 투명도를 조절해 원본 해상도로 저장하세요.">
+  <meta name="description" content="그림과 사진에 나만의 이름을. 문구를 반복하거나 움직이게 만들고, PNG·JPG 또는 움직이는 GIF로 저장하세요.">
   <title>도르단 워터마크</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233959e8'/%3E%3Cpath d='M8 9h9a7 7 0 0 1 0 14H8z' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M5 16h22' stroke='%23b7f07b' stroke-width='3'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./style.css">
@@ -18,7 +18,7 @@
     <div class="page-heading"><div><span class="eyebrow">MY WATERMARK STUDIO</span><h1>내 그림에, 내 이름.</h1></div><p>가로로 쭉, 원하는 만큼 가볍게.</p></div>
     <div class="workspace">
       <section class="preview-panel" aria-label="워터마크 미리보기">
-        <div class="panel-top"><h2>미리보기</h2><button id="compare" class="subtle-button" type="button" aria-pressed="false">원본 보기</button></div>
+        <div class="panel-top"><h2>미리보기</h2><div class="preview-actions"><button id="pause" class="subtle-button" type="button" aria-pressed="false" hidden>일시정지</button><button id="compare" class="subtle-button" type="button" aria-pressed="false">원본 보기</button></div></div>
         <div class="stage" id="dropzone">
           <div id="empty-state" class="empty-state">
             <div class="pattern-demo" aria-hidden="true"><span>도르단 도르단 도르단</span><span>도르단 도르단 도르단</span><span>도르단 도르단 도르단</span></div>
@@ -36,7 +36,7 @@
         </div>
         <div class="preview-bottom"><span id="file-info">불러온 그림이 없어요</span><button id="replace" type="button" class="subtle-button" hidden>그림 바꾸기</button></div>
         <input id="file" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" hidden>
-        <p class="preview-note">미리보기는 화면에 맞춰 표시하고, 저장할 때는 원본 크기를 유지해요.</p>
+        <p id="preview-note" class="preview-note">미리보기는 화면에 맞춰 표시하고, 저장할 때는 원본 크기를 유지해요.</p>
       </section>
       <aside class="settings-panel" aria-label="워터마크 설정">
         <div class="settings-title"><h2>워터마크 설정</h2><button id="reset" class="text-button" type="button">초기화</button></div>
@@ -53,7 +53,8 @@
           <div class="slider-field"><label for="angle">기울기 <output id="angle-value">0°</output></label><input id="angle" type="range" min="-45" max="45" step="1" value="0"></div>
         </div>
         <label class="outline-control"><input id="outline" type="checkbox"><span>밝고 어두운 그림에도 보이게 <b>윤곽선</b></span></label>
-        <div class="export-area"><label for="format">저장 형식</label><select id="format"><option value="png">PNG · 투명 배경 유지</option><option value="jpeg">JPG · 흰 배경으로 저장</option></select><button id="download" class="primary-button download-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>워터마크 넣고 저장</span></button><p>원본 파일은 그대로 남아 있어요.</p></div>
+        <fieldset class="motion-settings"><legend>움직이는 워터마크</legend><label for="motion">이동 방향</label><select id="motion"><option value="none">움직임 없음</option><option value="right">오른쪽으로 흐르기</option><option value="left">왼쪽으로 흐르기</option></select><div id="motion-options" hidden><label for="duration">이동 속도</label><select id="duration"><option value="6">느긋하게 · 6초마다 반복</option><option value="4" selected>보통 · 4초마다 반복</option><option value="2">빠르게 · 2초마다 반복</option></select><label for="gifEdge">GIF 크기 · 긴 쪽 기준</label><select id="gifEdge"><option value="480">작게 · 최대 480px</option><option value="640" selected>보통 · 최대 640px</option><option value="960">크게 · 최대 960px</option></select><p class="motion-hint">그림은 그대로, 글씨만 흘러가요.<br>GIF는 256색으로 저장하고 투명한 곳은 흰색으로 채워요.</p></div></fieldset>
+        <div class="export-area"><label for="format">저장 형식</label><select id="format"><option value="png">PNG · 투명 배경 유지</option><option value="jpeg">JPG · 흰 배경으로 저장</option><option value="gif">GIF · 움직이는 워터마크</option></select><button id="download" class="primary-button download-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></svg><span>워터마크 넣고 저장</span></button><div id="export-progress" hidden><progress id="gif-progress" max="100" value="0" aria-label="GIF 저장 진행률"></progress><div class="progress-caption"><span id="gif-status" role="status" aria-live="polite">GIF 준비 중…</span><button id="cancel-export" class="text-button" type="button">취소</button></div></div><p id="gif-ready" hidden><a id="gif-result" class="gif-result">완성된 GIF 다운로드</a></p><p>원본 파일은 그대로 남아 있어요.</p></div>
       </aside>
     </div>
     <footer><span class="footer-brand">dordan<span> / </span>watermark</span><span>그림을 불러오고 · 이름을 새기고 · 저장하기</span></footer>
