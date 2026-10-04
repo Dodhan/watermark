@@ -7,7 +7,7 @@
   <meta name="description" content="그림과 사진에 나만의 이름을. 문구를 반복하거나 움직이게 만들고, PNG·JPG 또는 움직이는 GIF로 저장하세요.">
   <title>도르단 워터마크</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%233959e8'/%3E%3Cpath d='M8 9h9a7 7 0 0 1 0 14H8z' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M5 16h22' stroke='%23b7f07b' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=presets-1">
 </head>
 <body>
   <header class="site-header">
@@ -40,6 +40,16 @@
       </section>
       <aside class="settings-panel" aria-label="워터마크 설정">
         <div class="settings-title"><h2>워터마크 설정</h2><button id="reset" class="text-button" type="button">초기화</button></div>
+        <section class="preset-panel" aria-labelledby="preset-heading">
+          <div class="preset-heading"><h3 id="preset-heading">내 프리셋</h3><span>자주 쓰는 설정을 한 번에</span></div>
+          <label for="preset-list">저장한 프리셋</label>
+          <div class="preset-row"><select id="preset-list"><option value="">아직 저장한 프리셋이 없어요</option></select><button id="preset-load" class="subtle-button" type="button" disabled>불러오기</button></div>
+          <label for="preset-name">프리셋 이름</label>
+          <div class="preset-row"><input id="preset-name" type="text" maxlength="40" autocomplete="off" placeholder="예: 스밍 인증용"><button id="preset-save" class="preset-save" type="button" disabled>새로 저장</button></div>
+          <div class="preset-actions"><button id="preset-update" class="text-button" type="button" disabled>선택 덮어쓰기</button><button id="preset-delete" class="text-button" type="button" disabled>삭제</button></div>
+          <p class="preset-hint">사진 없이 설정만 이 기기·브라우저에 저장해요.<br>브라우저 데이터를 지우면 프리셋도 지워져요.</p>
+          <p id="settings-storage-status" class="storage-status" role="status" aria-live="polite">마지막 설정은 자동으로 기억해요.</p>
+        </section>
         <div class="field"><label for="text">새길 문구</label><input id="text" type="text" maxlength="80" value="도르단" autocomplete="off" placeholder="이름이나 닉네임을 적어 주세요"></div>
         <fieldset class="field"><legend>배치</legend><div class="segmented"><label><input type="radio" name="mode" value="all" checked><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>여러 줄 반복</span></label><label><input type="radio" name="mode" value="single"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"/></svg>한 줄 반복</span></label></div></fieldset>
         <div class="field font-field"><div><label for="font">글꼴</label><select id="font"><option value="sans">고딕</option><option value="serif">명조</option></select></div><label class="bold-control"><input id="bold" type="checkbox" checked><span>가</span><span>굵게</span></label></div>
@@ -60,6 +70,6 @@
     <footer><span class="footer-brand">dordan<span> / </span>watermark</span><span>그림을 불러오고 · 이름을 새기고 · 저장하기</span></footer>
   </main>
   <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
-  <script type="module" src="./app.mjs"></script>
+  <script type="module" src="./app.mjs?v=presets-1"></script>
 </body>
 </html>

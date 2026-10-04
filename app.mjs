@@ -1,10 +1,32 @@
 import {defaults,validateSettings,drawWatermark} from './renderer.mjs';
+import {createSettingsStore,STORAGE_KEY} from './settings-storage.mjs';
 const $=id=>document.getElementById(id);
 let settings={...defaults},source=null,sourceName='',sourceWidth=0,sourceHeight=0,loadTicket=0,original=false,frame=0,noticeTimer,exporting=false;
 let animationMs=0,lastTick=null,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,exportController=null,lastExportUrl=null;
 const canvas=$('preview'),ctx=canvas.getContext('2d');
 const keys=['text','font','color','bold','outline','opacity','size','gap','lineGap','position','angle','format','motion','duration','gifEdge'];
 const rangeKeys=['opacity','size','gap','lineGap','position','angle'];
+const settingsStore=createSettingsStore(()=>window.localStorage);
+let savedPresets=[],storageError='';
+function storageStatus(message,error=false){const el=$('settings-storage-status');if(el.textContent!==message)el.textContent=message;el.classList.toggle('error',error);}
+function reportStorageError(error){storageStatus(error.message,true);if(storageError!==error.message)notify(error.message,true);storageError=error.message;}
+function rememberSettings(){try{settingsStore.saveLast(settings);storageError='';storageStatus('마지막 설정을 자동으로 저장했어요.');}catch(error){reportStorageError(error);}}
+function refreshPresetControls(){
+  const selected=savedPresets.some(p=>p.id===$('preset-list').value);
+  $('preset-list').disabled=exporting||!savedPresets.length;
+  for(const id of ['preset-load','preset-update','preset-delete'])$(id).disabled=exporting||!selected;
+  $('preset-save').disabled=exporting||!$('preset-name').value.trim();
+  $('preset-name').disabled=exporting;
+}
+function refreshPresetList(presets,selected=$('preset-list').value){
+  savedPresets=presets;
+  const placeholder=new Option(presets.length?'프리셋을 선택해 주세요':'아직 저장한 프리셋이 없어요','');
+  $('preset-list').replaceChildren(placeholder,...presets.map(p=>new Option(p.name,p.id)));
+  $('preset-list').value=presets.some(p=>p.id===selected)?selected:'';
+  refreshPresetControls();
+}
+function readPresets(){const {state}=settingsStore.read();refreshPresetList(state.presets);return state;}
+function selectedPreset(){const id=$('preset-list').value;return readPresets().presets.find(p=>p.id===id);}
 function notify(message,error=false){clearTimeout(noticeTimer);$('notice').textContent=message;$('notice').classList.toggle('error',error);$('notice').hidden=false;noticeTimer=setTimeout(()=>$('notice').hidden=true,error?7000:4000);}
 function refreshControls(){
   for(const key of keys){const el=$(key);if(el.type==='checkbox')el.checked=settings[key];else el.value=settings[key];}
@@ -12,6 +34,7 @@ function refreshControls(){
   for(const key of rangeKeys){const el=$(key);$(key+'-value').textContent=settings[key]+(key==='angle'?'°':key==='gap'||key==='lineGap'?'배':'%');const pct=(settings[key]-Number(el.min))/(Number(el.max)-Number(el.min))*100;el.style.background=`linear-gradient(to right,#526eea ${pct}%,#e8ecf4 ${pct}%)`;}
   document.querySelectorAll('.swatch').forEach(el=>{const active=el.dataset.color===settings.color.toLowerCase();el.classList.toggle('selected',active);el.setAttribute('aria-pressed',String(active));});
   document.querySelectorAll('.settings-panel input,.settings-panel select,.settings-panel button').forEach(el=>el.disabled=exporting&&el.id!=='cancel-export');
+  refreshPresetControls();
   $('rows-control').hidden=settings.mode==='single';$('position-control').hidden=settings.mode!=='single';$('download').disabled=!source||!settings.text.trim()||exporting;$('compare').disabled=!source||exporting;
   for(const id of ['upload','replace','sample'])$(id).disabled=exporting;
   const moving=settings.motion!=='none';$('motion-options').hidden=!moving;$('pause').hidden=!moving||!source;$('pause').disabled=exporting||original;
@@ -39,12 +62,47 @@ function configure(patch){
   if('motion' in patch)next.format=next.motion==='none'?(next.format==='gif'?'png':next.format):'gif';
   if('format' in patch)next.motion=next.format==='gif'?(next.motion==='none'?'right':next.motion):'none';
   if(next.motion!==settings.motion){animationMs=0;lastTick=null;}
-  settings=next;clearGifResult();render();return {...settings};
+  settings=next;rememberSettings();clearGifResult();render();return {...settings};
 }
 for(const key of keys)$(key).addEventListener('input',event=>{const el=event.target;configure({[key]:el.type==='checkbox'?el.checked:el.type==='range'||['duration','gifEdge'].includes(key)?Number(el.value):el.value});});
 document.querySelectorAll('[name=mode]').forEach(el=>el.addEventListener('change',()=>configure({mode:el.value})));
 document.querySelectorAll('.swatch').forEach(el=>el.addEventListener('click',()=>configure({color:el.dataset.color})));
-$('reset').addEventListener('click',()=>{settings={...defaults};animationMs=0;lastTick=null;clearGifResult();original=false;$('compare').setAttribute('aria-pressed','false');$('compare').textContent='원본 보기';render();notify('워터마크 설정을 처음으로 돌렸어요.');});
+$('reset').addEventListener('click',()=>{settings={...defaults};rememberSettings();animationMs=0;lastTick=null;clearGifResult();original=false;$('compare').setAttribute('aria-pressed','false');$('compare').textContent='원본 보기';render();notify('워터마크 설정을 처음으로 돌렸어요. 저장한 프리셋은 그대로예요.');});
+$('preset-name').addEventListener('input',refreshPresetControls);
+$('preset-name').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();if(!$('preset-save').disabled)$('preset-save').click();}});
+$('preset-list').addEventListener('change',()=>{const preset=savedPresets.find(p=>p.id===$('preset-list').value);$('preset-name').value=preset?.name??'';refreshPresetControls();});
+$('preset-load').addEventListener('click',()=>{
+  if(exporting)return;
+  try{
+    const preset=selectedPreset();if(!preset){notify('프리셋을 다시 선택해 주세요.',true);return;}
+    configure(preset.settings);original=false;animationMs=0;lastTick=null;
+    $('compare').setAttribute('aria-pressed','false');$('compare').textContent='원본 보기';$('preset-name').value=preset.name;render();
+    if(!storageError)notify(`‘${preset.name}’ 설정을 불러왔어요.`);
+  }catch(error){reportStorageError(error);}
+});
+function savePreset(update=false){
+  if(exporting)return;
+  try{
+    const preset=update?selectedPreset():null;
+    if(update&&!preset){notify('덮어쓸 프리셋을 선택해 주세요.',true);return;}
+    if(update&&!window.confirm(`‘${preset.name}’ 프리셋을 현재 이름과 워터마크 설정으로 덮어쓸까요?`))return;
+    const {state,id}=settingsStore.savePreset($('preset-name').value,settings,preset?.id??null);
+    refreshPresetList(state.presets,id);$('preset-name').value=state.presets.find(p=>p.id===id).name;
+    storageError='';storageStatus('프리셋과 마지막 설정을 저장했어요.');notify(update?'프리셋을 덮어썼어요.':'프리셋을 저장했어요. 다음에도 바로 불러올 수 있어요.');
+  }catch(error){notify(error.message,true);}
+}
+$('preset-save').addEventListener('click',()=>savePreset());
+$('preset-update').addEventListener('click',()=>savePreset(true));
+$('preset-delete').addEventListener('click',()=>{
+  if(exporting)return;
+  try{
+    const preset=selectedPreset();if(!preset)return;
+    if(!window.confirm(`‘${preset.name}’ 프리셋을 삭제할까요? 현재 워터마크 설정은 그대로 남아요.`))return;
+    const state=settingsStore.deletePreset(preset.id);$('preset-name').value='';refreshPresetList(state.presets,'');
+    storageError='';storageStatus('프리셋을 삭제했어요.');notify('프리셋을 삭제했어요. 현재 설정은 그대로예요.');
+  }catch(error){reportStorageError(error);}
+});
+window.addEventListener('storage',event=>{if(event.key===STORAGE_KEY||event.key===null){try{readPresets();}catch(error){reportStorageError(error);}}});
 function useSource(image,name,width,height){source=image;sourceName=name;sourceWidth=width;sourceHeight=height;animationMs=0;lastTick=null;clearGifResult();original=false;$('compare').setAttribute('aria-pressed','false');$('compare').textContent='원본 보기';$('empty-state').hidden=true;canvas.hidden=false;$('replace').hidden=false;$('file-info').textContent=`${name} · ${width.toLocaleString()} × ${height.toLocaleString()}`;$('file-info').title=$('file-info').textContent;render();}
 async function loadFile(file){
   if(!file)return;if(exporting){notify('저장이 끝나거나 취소한 뒤 그림을 바꿔 주세요.');return;}
@@ -122,7 +180,15 @@ async function download(){
   }catch(error){notify(error.name==='AbortError'?'GIF 저장을 취소했어요.':'이 기기에서 그림을 저장하지 못했어요. 저장 크기를 줄이거나 다른 브라우저에서 다시 시도해 주세요.',error.name!=='AbortError');}
   finally{out.width=0;out.height=0;exporting=false;exportController=null;lastTick=null;$('export-progress').hidden=true;render();}
 }
-$('download').addEventListener('click',download);render();
+$('download').addEventListener('click',download);
+try{
+  const {state,recovered}=settingsStore.read();
+  if(state.lastSettings)settings=state.lastSettings;
+  refreshPresetList(state.presets);
+  if(recovered)storageStatus('읽을 수 없는 저장 항목은 건너뛰었어요. 설정을 확인한 뒤 다시 저장해 주세요.',true);
+  else if(state.lastSettings)storageStatus('지난번 워터마크 설정을 불러왔어요.');
+}catch(error){storageStatus(error.message,true);storageError=error.message;}
+render();
 const modelContext=document.modelContext;
 if(modelContext?.registerTool){
   const lifecycle=new AbortController();
