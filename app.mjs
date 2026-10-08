@@ -1,11 +1,11 @@
 import {defaults,validateSettings,drawWatermark} from './renderer.mjs';
 import {createSettingsStore,STORAGE_KEY} from './settings-storage.mjs';
-import {MAX_PHOTOS,collageDefaults,drawCollage} from './collage.mjs';
+import {MAX_PHOTOS,collageDefaults,drawCollage,drawOriginalCollage} from './collage.mjs?v=collage-hq-2';
 const $=id=>document.getElementById(id);
 let settings={...defaults},source=null,sourceName='',sourceWidth=0,sourceHeight=0,original=false,frame=0,noticeTimer,exporting=false;
 let animationMs=0,lastTick=null,paused=matchMedia('(prefers-reduced-motion: reduce)').matches,exportController=null,lastExportUrl=null;
 const canvas=$('preview'),ctx=canvas.getContext('2d');
-let sourceMode='single',singleSource=null,collagePhotos=[],collageSettings={...collageDefaults},loadingImages=false,collageFrame=0,collageError='';
+let sourceMode=location.hash==='#collage'?'collage':'single',singleSource=null,collagePhotos=[],collageSettings={...collageDefaults},loadingImages=false,collageFrame=0,collageError='',collageWatermark=false,collageLayout=null;
 let photoId=0;
 const collageCanvas=document.createElement('canvas');
 const keys=['text','font','color','bold','outline','opacity','size','gap','lineGap','position','angle','format','motion','duration','gifEdge'];
@@ -32,6 +32,7 @@ function refreshPresetList(presets,selected=$('preset-list').value){
 function readPresets(){const {state}=settingsStore.read();refreshPresetList(state.presets);return state;}
 function selectedPreset(){const id=$('preset-list').value;return readPresets().presets.find(p=>p.id===id);}
 function notify(message,error=false){clearTimeout(noticeTimer);$('notice').textContent=message;$('notice').classList.toggle('error',error);$('notice').hidden=false;noticeTimer=setTimeout(()=>$('notice').hidden=true,error?7000:4000);}
+function watermarkEnabled(){return sourceMode!=='collage'||collageWatermark;}
 function refreshControls(){
   for(const key of keys){const el=$(key);if(el.type==='checkbox')el.checked=settings[key];else el.value=settings[key];}
   document.querySelectorAll('[name=mode]').forEach(el=>el.checked=el.value===settings.mode);
@@ -42,25 +43,25 @@ function refreshControls(){
   $('rows-control').hidden=settings.mode==='single';$('position-control').hidden=settings.mode!=='single';$('download').disabled=!source||!settings.text.trim()||exporting||loadingImages||Boolean(collageFrame);$('compare').disabled=!source||exporting||loadingImages;
   for(const id of ['upload','replace','sample'])$(id).disabled=exporting||loadingImages;
   refreshCollageControls();
-  const moving=settings.motion!=='none';$('motion-options').hidden=!moving;$('pause').hidden=!moving||!source;$('pause').disabled=exporting||original;
+  const moving=watermarkEnabled()&&settings.motion!=='none';$('motion-options').hidden=!moving;$('pause').hidden=!moving||!source;$('pause').disabled=exporting||original;
   $('pause').textContent=paused?'움직임 재생':'일시정지';$('pause').setAttribute('aria-pressed',String(paused));
   if(!exporting)$('download').querySelector('span').textContent=moving?'움직이는 GIF 저장':'워터마크 넣고 저장';
-  $('preview-note').textContent=moving?`그림은 그대로, 워터마크만 반복해서 움직여요. GIF는 긴 쪽 최대 ${settings.gifEdge}px로 저장해요.`:sourceMode==='collage'?`콜라주는 긴 쪽 ${collageSettings.edge.toLocaleString()}px로 저장해요. 사진 전체 보이기는 원본 비율을 유지해요.`:'미리보기는 화면에 맞춰 표시하고, 저장할 때는 원본 크기를 유지해요.';
+  $('preview-note').textContent=moving?`그림은 그대로, 워터마크만 반복해서 움직여요. GIF는 긴 쪽 최대 ${settings.gifEdge}px로 저장해요.`:sourceMode==='collage'?'미리보기는 가볍게, 저장은 원본 사진으로 만들어요. PNG는 추가 화질 손실 없이 저장해요.':'미리보기는 화면에 맞춰 표시하고, 저장할 때는 원본 크기를 유지해요.';
   document.querySelectorAll('.pattern-demo span').forEach(el=>el.textContent=Array(4).fill(settings.text.trim()||'도르단').join('　'));
 }
 function drawPreview(timestamp){
   frame=0;if(!source)return;
-  const moving=settings.motion!=='none'&&!paused&&!original&&!exporting&&!document.hidden;
+  const moving=watermarkEnabled()&&settings.motion!=='none'&&!paused&&!original&&!exporting&&!document.hidden;
   if(moving&&lastTick!==null)animationMs+=Math.min(100,timestamp-lastTick);
   lastTick=moving?timestamp:null;
-  const scale=Math.min(1,(settings.motion==='none'?1600:1000)/Math.max(sourceWidth,sourceHeight));
+  const scale=Math.min(1,(!watermarkEnabled()||settings.motion==='none'?1600:1000)/Math.max(sourceWidth,sourceHeight));
   const w=Math.max(1,Math.round(sourceWidth*scale)),h=Math.max(1,Math.round(sourceHeight*scale));
   if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
-  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);if(settings.format==='gif'&&!original){ctx.fillStyle='#ffffff';ctx.fillRect(0,0,w,h);}ctx.save();ctx.scale(w/sourceWidth,h/sourceHeight);ctx.drawImage(source,0,0,sourceWidth,sourceHeight);if(!original)drawWatermark(ctx,sourceWidth,sourceHeight,settings,animationMs/(settings.duration*1000));ctx.restore();
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,w,h);if(watermarkEnabled()&&settings.format==='gif'&&!original){ctx.fillStyle='#ffffff';ctx.fillRect(0,0,w,h);}ctx.save();ctx.scale(w/sourceWidth,h/sourceHeight);ctx.drawImage(source,0,0,sourceWidth,sourceHeight);if(watermarkEnabled()&&!original)drawWatermark(ctx,sourceWidth,sourceHeight,settings,animationMs/(settings.duration*1000));ctx.restore();
   if(moving)frame=requestAnimationFrame(drawPreview);
 }
 function render(){refreshControls();if(!frame)frame=requestAnimationFrame(drawPreview);}
-function clearGifResult(){if(lastExportUrl)URL.revokeObjectURL(lastExportUrl);lastExportUrl=null;$('gif-ready').hidden=true;$('gif-result').removeAttribute('href');}
+function clearGifResult(){if(lastExportUrl)URL.revokeObjectURL(lastExportUrl);lastExportUrl=null;$('gif-ready').hidden=true;$('gif-result').removeAttribute('href');$('collage-ready').hidden=true;$('collage-result').removeAttribute('href');}
 function configure(patch){
   if(exporting)throw new Error('GIF 저장이 끝나거나 취소한 뒤 설정을 바꿔 주세요.');
   const next=validateSettings(patch,settings);
@@ -110,12 +111,19 @@ $('preset-delete').addEventListener('click',()=>{
 window.addEventListener('storage',event=>{if(event.key===STORAGE_KEY||event.key===null){try{readPresets();}catch(error){reportStorageError(error);}}});
 function useSource(image,name,width,height){source=image;sourceName=name;sourceWidth=width;sourceHeight=height;animationMs=0;lastTick=null;clearGifResult();original=false;$('compare').setAttribute('aria-pressed','false');$('compare').textContent='원본 보기';$('empty-state').hidden=true;canvas.hidden=false;$('replace').hidden=false;$('file-info').textContent=`${name} · ${width.toLocaleString()} × ${height.toLocaleString()}`;$('file-info').title=$('file-info').textContent;render();}
 function clearSource(){source=null;sourceName='';sourceWidth=0;sourceHeight=0;clearGifResult();original=false;canvas.hidden=true;$('empty-state').hidden=false;$('replace').hidden=true;$('file-info').textContent='불러온 그림이 없어요';$('file-info').title='';$('compare').textContent='원본 보기';$('compare').setAttribute('aria-pressed','false');render();}
-function setSingleSource(image,name,width,height){singleSource={image,name,width,height};useSource(image,name,width,height);}
+function setSingleSource(image,name,width,height,file=null){singleSource={image,name,width,height,file};useSource(image,name,width,height);}
 function refreshCollageControls(){
   const collage=sourceMode==='collage',busy=exporting||loadingImages;
   document.body.classList.toggle('is-collage',collage);
+  document.body.classList.toggle('collage-only',collage&&!collageWatermark);
+  $('watermark-panel').hidden=collage&&!collageWatermark;
+  $('collage-watermark').checked=collageWatermark;
+  $('compare').hidden=collage&&!collageWatermark;
+  $('preview').setAttribute('aria-label',collage&&!collageWatermark?'콜라주 미리보기':'워터마크가 적용된 그림 미리보기');
   document.querySelectorAll('[name=source-mode]').forEach(el=>{el.checked=el.value===sourceMode;el.disabled=busy;});
   $('collage-editor').hidden=!collage;
+  $('page-title').textContent=collage?'사진을 모아, 한 장으로.':'내 그림에, 내 이름.';
+  $('page-subtitle').textContent=collage?'광고 없이, 원본을 살린 콜라주.':'가로로 쭉, 원하는 만큼 가볍게.';
   $('upload-heading').textContent=collage?'합칠 사진을 골라요':'워터마크를 넣을 그림을 골라요';
   $('sample').textContent=collage?'예시 사진으로 콜라주 체험하기':'그림 없이 먼저 체험하기';
   $('replace').textContent=collage?'사진 더 추가':'그림 바꾸기';
@@ -129,6 +137,7 @@ function refreshCollageControls(){
   $('collage-add').disabled=busy||collagePhotos.length>=MAX_PHOTOS;
   $('collage-clear').disabled=busy||!collagePhotos.length;
   $('collage-save').disabled=busy||!source||!collage||Boolean(collageFrame)||Boolean(collageError);
+  if(!exporting)$('collage-save').textContent='콜라주만 PNG 저장';
   if(collage&&collagePhotos.length>=MAX_PHOTOS)$('replace').disabled=true;
   document.querySelectorAll('[data-photo-action]').forEach(el=>{
     const i=collagePhotos.findIndex(p=>String(p.id)===el.dataset.photoId);
@@ -136,16 +145,19 @@ function refreshCollageControls(){
   });
   $('collage-status').classList.toggle('error',Boolean(collageError));
   $('collage-status').textContent=loadingImages?'사진을 불러오는 중이에요…':collageError||'사진은 이 기기에서만 처리해요. 새로고침하면 선택한 사진은 사라져요.';
+  const size=$('collage-size');
+  size.textContent=collageLayout?`저장 크기 ${collageLayout.width.toLocaleString()} × ${collageLayout.height.toLocaleString()}px · PNG`:'사진을 넣으면 실제 저장 크기를 보여드려요.';
+  if(collageLayout?.limited)size.textContent+=` · 설정 크기 ${collageLayout.requestedWidth.toLocaleString()} × ${collageLayout.requestedHeight.toLocaleString()}px에서 저장 한도에 맞춰 줄였어요.`;
 }
-function makePhoto(image,name,width,height){
-  const scale=Math.min(1,2048/Math.max(width,height));
+function makePhoto(image,name,width,height,file=null){
+  const scale=file?Math.min(1,1280/Math.max(width,height)):1;
   const copy=document.createElement('canvas');copy.width=Math.max(1,Math.round(width*scale));copy.height=Math.max(1,Math.round(height*scale));
   const c=copy.getContext('2d');if(!c)throw new Error('사진을 처리할 메모리가 부족해요. 사진 수를 줄여 주세요.');
   c.drawImage(image,0,0,copy.width,copy.height);
   const thumb=document.createElement('canvas'),ts=128/Math.max(copy.width,copy.height);thumb.width=Math.max(1,Math.round(copy.width*ts));thumb.height=Math.max(1,Math.round(copy.height*ts));
   thumb.getContext('2d').drawImage(copy,0,0,thumb.width,thumb.height);
   const thumbnail=thumb.toDataURL('image/png');thumb.width=0;thumb.height=0;
-  return {id:++photoId,name,image:copy,width:copy.width,height:copy.height,thumbnail};
+  return {id:++photoId,name,image:copy,width,height,file,thumbnail};
 }
 function releasePhotos(photos){for(const p of photos){p.image.width=0;p.image.height=0;}}
 function renderPhotoList(){
@@ -164,23 +176,25 @@ function renderPhotoList(){
 function updateCollage(){
   cancelAnimationFrame(collageFrame);collageFrame=0;collageError='';
   if(sourceMode!=='collage')return;
-  if(!collagePhotos.length){collageCanvas.width=0;collageCanvas.height=0;clearSource();return;}
-  try{const {width,height}=drawCollage(collageCanvas,collagePhotos,collageSettings);useSource(collageCanvas,`콜라주_${collagePhotos.length}장.png`,width,height);}
-  catch(error){collageError=error.message;clearSource();}
+  if(!collagePhotos.length){collageLayout=null;collageCanvas.width=0;collageCanvas.height=0;clearSource();return;}
+  try{collageLayout=drawCollage(collageCanvas,collagePhotos,collageSettings,1600);useSource(collageCanvas,`콜라주_${collagePhotos.length}장.png`,collageLayout.width,collageLayout.height);}
+  catch(error){collageLayout=null;collageError=error.message;clearSource();}
 }
 function switchSourceMode(mode){
   if(exporting||loadingImages||mode===sourceMode)return;
   cancelAnimationFrame(collageFrame);collageFrame=0;
   if(mode==='collage'&&!collagePhotos.length&&singleSource){
-    try{const p=singleSource;collagePhotos.push(makePhoto(p.image,p.name,p.width,p.height));renderPhotoList();}catch(error){notify(error.message,true);return;}
+    try{const p=singleSource;collagePhotos.push(makePhoto(p.image,p.name,p.width,p.height,p.file));renderPhotoList();}catch(error){notify(error.message,true);return;}
   }
   sourceMode=mode;
+  history.replaceState(null,'',mode==='collage'?'#collage':location.pathname+location.search);
   if(mode==='collage')updateCollage();else if(singleSource){const p=singleSource;useSource(p.image,p.name,p.width,p.height);}else clearSource();
 }
 document.querySelectorAll('[name=source-mode]').forEach(el=>el.addEventListener('change',()=>switchSourceMode(el.value)));
+$('collage-watermark').addEventListener('change',event=>{collageWatermark=event.target.checked;original=false;animationMs=0;lastTick=null;$('compare').textContent='원본 보기';$('compare').setAttribute('aria-pressed','false');clearGifResult();render();});
 for(const key of Object.keys(collageDefaults))$('collage-'+key).addEventListener('input',event=>{
   if(exporting||loadingImages)return;
-  collageSettings[key]=['gap','edge'].includes(key)?Number(event.target.value):event.target.value;
+  collageSettings[key]=key==='gap'||(key==='edge'&&event.target.value!=='original')?Number(event.target.value):event.target.value;
   cancelAnimationFrame(collageFrame);collageFrame=requestAnimationFrame(updateCollage);clearGifResult();refreshControls();
 });
 $('collage-photos').addEventListener('click',event=>{
@@ -205,7 +219,7 @@ async function decodeFile(file){
   try{image.src=url;await image.decode();
     const w=image.naturalWidth,h=image.naturalHeight;
     if(!w||!h||w*h>40000000||w>16384||h>16384)throw new Error('그림이 너무 커요. 4,000만 화소 이하, 한 변 16,384px 이하로 줄여 주세요.');
-    return {image,name:file.name,width:w,height:h};
+    return {image,name:file.name,width:w,height:h,file};
   }catch(error){image.src='';throw new Error(error.message.startsWith('그림이 너무')?error.message:'그림을 읽지 못했어요. 다른 JPG 또는 PNG 파일로 다시 시도해 주세요.');}
   finally{URL.revokeObjectURL(url);}
 }
@@ -221,14 +235,14 @@ async function loadFiles(files){
   try{
     for(const file of all){
       let p;
-      try{p=await decodeFile(file);loaded.push(collage?makePhoto(p.image,p.name,p.width,p.height):p);}
+      try{p=await decodeFile(file);loaded.push(collage?makePhoto(p.image,p.name,p.width,p.height,file):p);}
       catch(error){failed++;firstError||=error.message;}
       finally{if(collage&&p)p.image.src='';}
       await new Promise(resolve=>setTimeout(resolve,0));
     }
     if(!loaded.length){notify(firstError||'사진을 불러오지 못했어요.',true);return;}
-    if(collage){if(!append){releasePhotos(collagePhotos);collagePhotos=[];}collagePhotos.push(...loaded);sourceMode='collage';renderPhotoList();updateCollage();}
-    else{const p=loaded[0];setSingleSource(p.image,p.name,p.width,p.height);}
+    if(collage){if(!append){releasePhotos(collagePhotos);collagePhotos=[];}collagePhotos.push(...loaded);sourceMode='collage';history.replaceState(null,'','#collage');renderPhotoList();updateCollage();}
+    else{const p=loaded[0];setSingleSource(p.image,p.name,p.width,p.height,p.file);}
     notify(failed?`${loaded.length}장을 불러왔어요. ${failed}장은 건너뛰었어요.\n${firstError}`:collage?`${loaded.length}장을 불러왔어요. 순서와 배치를 조절해 보세요.`:'그림을 불러왔어요. 원하는 느낌으로 조절해 보세요.',Boolean(failed));
   }finally{loadingImages=false;refreshControls();}
 }
@@ -266,7 +280,7 @@ $('sample').addEventListener('click',()=>{
 function filename(name,extension){return (name.replace(/\.[^.]+$/,'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_')||'그림')+'_워터마크.'+extension;}
 function saveBlob(blob,name,keep=false){
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();
-  if(keep){clearGifResult();lastExportUrl=url;$('gif-result').href=url;$('gif-result').download=name;$('gif-ready').hidden=false;}
+  if(keep){clearGifResult();lastExportUrl=url;const prefix=keep==='collage'?'collage':'gif';$(prefix+'-result').href=url;$(prefix+'-result').download=name;$(prefix+'-ready').hidden=false;}
   else setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function downloadGif(image,width,height,name,snapshot,signal){
@@ -299,12 +313,22 @@ async function download(collageOnly=false){
   const out=document.createElement('canvas');
   try{
     if(snapshot.format==='gif'){await downloadGif(image,w,h,name,snapshot,exportController.signal);return;}
-    out.width=w;out.height=h;const c=out.getContext('2d');if(!c)throw new Error('canvas');
-    if(snapshot.format==='jpeg'){c.fillStyle='#ffffff';c.fillRect(0,0,w,h);}
-    c.drawImage(image,0,0,w,h);drawWatermark(c,w,h,snapshot);
+    if(sourceMode==='collage'){
+      $('collage-save').textContent='원본 사진으로 만드는 중…';
+      await drawOriginalCollage(out,collagePhotos,collageSettings,async photo=>{
+        if(!photo.file)return {image:photo.image};
+        const decoded=await decodeFile(photo.file);
+        return {image:decoded.image,release:()=>{decoded.image.src='';}};
+      },(done,total)=>{$('collage-save').textContent=`원본 사진으로 만드는 중 · ${done}/${total}`;});
+    }else{
+      out.width=w;out.height=h;const c=out.getContext('2d');if(!c)throw new Error('canvas');
+      if(snapshot.format==='jpeg'){c.fillStyle='#ffffff';c.fillRect(0,0,w,h);}
+      c.drawImage(image,0,0,w,h);
+    }
+    if(!collageOnly)drawWatermark(out.getContext('2d'),w,h,snapshot);
     const blob=await new Promise((resolve,reject)=>out.toBlob(result=>result?resolve(result):reject(new Error('encode')),'image/'+snapshot.format,.95));
-    saveBlob(blob,collageOnly?name:filename(name,snapshot.format==='jpeg'?'jpg':'png'));
-    notify('저장할 그림을 준비했어요. 기기의 다운로드 목록을 확인해 주세요.');
+    saveBlob(blob,collageOnly?name:filename(name,snapshot.format==='jpeg'?'jpg':'png'),collageOnly?'collage':false);
+    notify(collageOnly?`${w.toLocaleString()} × ${h.toLocaleString()}px PNG를 만들었어요!\n저장이 시작되지 않으면 ‘완성된 콜라주 다운로드’를 눌러 주세요.`:'저장할 그림을 준비했어요. 기기의 다운로드 목록을 확인해 주세요.');
   }catch(error){notify(error.name==='AbortError'?'GIF 저장을 취소했어요.':'이 기기에서 그림을 저장하지 못했어요. 저장 크기를 줄이거나 다른 브라우저에서 다시 시도해 주세요.',error.name!=='AbortError');}
   finally{out.width=0;out.height=0;exporting=false;exportController=null;lastTick=null;$('export-progress').hidden=true;render();}
 }
